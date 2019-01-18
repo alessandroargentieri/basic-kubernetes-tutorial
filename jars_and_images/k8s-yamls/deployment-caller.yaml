@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service              
+metadata:
+  name: caller-loadbalancer
+spec:
+  type: LoadBalancer       
+  ports:
+  - port: 8080               
+    targetPort: 8080        
+  selector:            
+    app: caller    
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: caller
+  labels:
+    app: caller
+spec:
+  replicas: 2                                             
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate                                   
+    rollingUpdate: 
+      maxUnavailable: 1                                   
+      maxSurge: 1                                         
+  selector:
+    matchLabels:
+      app: caller
+      tier: caller-called
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: caller
+        tier: caller-called
+    spec:
+      containers:
+      - image: alessandroargentieri/caller-caller
+        name: caller
+        env:
+        - name: CALLERPORT
+          value: "8080"
+        - name: CALLEDADDRESS
+          value: "http://called-loadbalancer.default.svc.cluster.local:8081" #"called-loadbalancer" #http://called called, called-loadbalancer
+        ports:
+        - containerPort: 8080
+          name: caller
