@@ -205,3 +205,116 @@ http://192.168.99.100:30078/caller POST {"title" : "Mr.", "name": "Alessandro", 
 )
 
 minikube dashboard — url
+
+IMPORTANTE: se i due load-balancer hanno porta (port) impostata ad 80 invece che ad 8080 ad esempio, allora la stringa di connessione sara' piu' semplice da specificare.
+Possiamo inserire semplicemente:
+
+value: "http://called-loadbalancer" 
+invece che inserire tutta la stringa completa:
+value: "http://called-loadbalancer.default.svc.cluster.local:80"
+
+P.S. possiamo settare le varie porte (port) dei load balancer entrambe a 80, non ci saranno conflitti:
+
+````````````````````````````````````````
+apiVersion: v1
+kind: Service              
+metadata:
+  name: called-loadbalancer
+spec:
+  type: LoadBalancer       
+  ports:
+  - port: 80               
+    targetPort: 8081        
+  selector:            
+    app: called    
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: called
+  labels:
+    app: called
+spec:
+  replicas: 2                                             
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate                                   
+    rollingUpdate: 
+      maxUnavailable: 1                                   
+      maxSurge: 1                                         
+  selector:
+    matchLabels:
+      app: called
+      tier: caller-called
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: called
+        tier: caller-called
+    spec:
+      containers:
+      - image: alessandroargentieri/called-called
+        name: called
+        env:
+        - name: CALLEDPORT
+          value: "8081"
+        ports:
+        - containerPort: 8081
+          name: called
+      
+      
+````````````````````````````````````````````````
+
+apiVersion: v1
+kind: Service              
+metadata:
+  name: caller-loadbalancer
+spec:
+  type: LoadBalancer       
+  ports:
+  - port: 80               
+    targetPort: 8080        
+  selector:            
+    app: caller    
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: caller
+  labels:
+    app: caller
+spec:
+  replicas: 2                                             
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate                                   
+    rollingUpdate: 
+      maxUnavailable: 1                                   
+      maxSurge: 1                                         
+  selector:
+    matchLabels:
+      app: caller
+      tier: caller-called
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: caller
+        tier: caller-called
+    spec:
+      containers:
+      - image: alessandroargentieri/caller-caller
+        name: caller
+        env:
+        - name: CALLERPORT
+          value: "8080"
+        - name: CALLEDADDRESS
+          value: "http://called-loadbalancer"
+        ports:
+        - containerPort: 8080
+          name: caller
+          
+  ````````````````````````````````````````````````````        
