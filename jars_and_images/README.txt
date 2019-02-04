@@ -202,6 +202,162 @@ http://192.168.99.100:30078/caller POST {"title" : "Mr.", "name": "Alessandro", 
 
 minikube dashboard — url
 
+~~~~~~~~~~~~~~~~~~~~~~~`
+Se vogliamo usare Ambassador seguiamo la guida: 
+https://www.getambassador.io/user-guide/getting-started/
+
+possiamo deployare ambassador dal link:
+kubectl apply -f https://getambassador.io/yaml/ambassador/ambassador-rbac.yaml
+poi deployare il load-balancer di ambassador:
+
+ambassador-loadbalancer.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ambassador
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ports:
+   - port: 80
+  selector:
+    service: ambassador
+    
+$ kubectl apply -f ambassador-loadbalancer.yaml    
+
+Poi vanno aggiornati i servizi inserendo i metadati relativi ad ambassador per il routing e i nuovi puntamenti (i microservizi puntano sempre all'API GATEWAY e questo fa da reverse proxy)
+
+~~~~~~called-deployment.yaml
+apiVersion: v1
+kind: Service              
+metadata:
+  name: called-loadbalancer
+  annotations:
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind:  Mapping
+      name:  called_mapping
+      prefix: /called-loadbalancer/
+      service: called-loadbalancer:80
+      host_rewrite: http://called-loadbalancer
+spec:
+  type: LoadBalancer       
+  ports:
+  - port: 80               
+    targetPort: 8081        
+  selector:            
+    app: called    
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: called
+  labels:
+    app: called
+spec:
+  replicas: 2                                             
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate                                   
+    rollingUpdate: 
+      maxUnavailable: 1                                   
+      maxSurge: 1                                         
+  selector:
+    matchLabels:
+      app: called
+      tier: caller-called
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: called
+        tier: caller-called
+    spec:
+      containers:
+      - image: alessandroargentieri/called-called
+        name: called
+        env:
+        - name: CALLEDPORT
+          value: "8081"
+        ports:
+        - containerPort: 8081
+          name: called
+
+~~~~~~~~~~caller-deployment.yaml
+apiVersion: v1
+kind: Service              
+metadata:
+  name: caller-loadbalancer
+  annotations:
+    getambassador.io/config: |
+      ---
+      apiVersion: ambassador/v0
+      kind:  Mapping
+      name:  caller_mapping
+      prefix: /caller-loadbalancer/
+      service: caller-loadbalancer:80
+      host_rewrite: http://caller-loadbalancer
+spec:
+  type: LoadBalancer       
+  ports:
+  - port: 80               
+    targetPort: 8080        
+  selector:            
+    app: caller    
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: caller
+  labels:
+    app: caller
+spec:
+  replicas: 2                                             
+  minReadySeconds: 15
+  strategy:
+    type: RollingUpdate                                   
+    rollingUpdate: 
+      maxUnavailable: 1                                   
+      maxSurge: 1                                         
+  selector:
+    matchLabels:
+      app: caller
+      tier: caller-called
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: caller
+        tier: caller-called
+    spec:
+      containers:
+      - image: alessandroargentieri/caller-caller
+        name: caller
+        env:
+        - name: CALLERPORT
+          value: "8080"
+        - name: CALLEDADDRESS
+          value: "http://ambassador/called-loadbalancer"
+        ports:
+        - containerPort: 8080
+          name: caller
+ 
+ kubectl apply -f called-deployment.yaml
+ kubectl apply -f caller-deployment.yaml
+ 
+ Poi 
+ minikube service list
+ prendere l'url di ambassador (ttp://192.168.99.100:32717) e chiamare:
+ 
+ http://192.168.99.100:32717/caller-loadbalancer/caller
+ body {"title": "Mr.", "name" : "Alessandro", "surname" : "Argentieri"}
+ 
+
+
 ~~~~~~~~~~~~~~~~~ALTRE INFO
 
 
